@@ -153,17 +153,33 @@ def file_stem(jik: str, chat, directory: Directory) -> str:
 
 
 class MediaRef:
-    """Location of a WhatsApp attachment inside the iPhone backup."""
+    """Location of a WhatsApp attachment inside the backup.
 
-    def __init__(self, domain: str, flat: bool, prefix: str = "Message"):
+    iPhone backup: ``xx/<sha1>`` (or ``<sha1>`` if flat), SHA-1 of
+    ``<domain>-<prefix>/<ZMEDIALOCALPATH>``.
+    WhatsApp iCloud backup (``Media.tar``, ``Media_1.tar``...): ``<tar>:<member>``
+    when the file is inside one of the given tar files, otherwise
+    ``sin fichero en la copia: <ZMEDIALOCALPATH>``. Tar files are only listed.
+    """
+
+    def __init__(self, domain: str, flat: bool, prefix: str = "Message", tars=None):
         self.domain = domain
         self.flat = flat
         self.prefix = prefix.strip("/")
+        self.tar_index = {}
+        for tar_path in tars or []:
+            import tarfile
+            with tarfile.open(tar_path, "r:") as tar:
+                for member in tar.getnames():
+                    self.tar_index.setdefault(member.lstrip("/"), f"{os.path.basename(tar_path)}:{member}")
 
     def __call__(self, local_path: str) -> str:
+        path = local_path.lstrip("/")
+        if self.tar_index or self.domain is None:
+            found = self.tar_index.get(path)
+            return found if found else f"sin fichero en la copia: {path}"
         # Modern WhatsApp: ZMEDIALOCALPATH 'Media/...' lives at 'Message/Media/...';
         # iOS 7 WhatsApp: '/Media/...' lives at 'Library/Media/...'.
-        path = local_path.lstrip("/")
         rel = path if path.startswith(self.prefix + "/") else f"{self.prefix}/{path}"
         file_id = hashlib.sha1(f"{self.domain}-{rel}".encode("utf-8")).hexdigest()
         return file_id if self.flat else f"{file_id[:2]}/{file_id}"
@@ -193,7 +209,8 @@ def _body(message, extra: Optional[sqlite3.Row], ref: MediaRef) -> Tuple[Optiona
     caption = message.caption.replace("<br>", "\n") if message.caption else None
     if extra is not None and extra["ZMEDIALOCALPATH"]:
         path = extra["ZMEDIALOCALPATH"]
-        line = f"<attached: {ref(path)} ({os.path.basename(path)})>"
+        where, name = ref(path), os.path.basename(path)
+        line = f"<attached: {where}>" if where.endswith(name) else f"<attached: {where} ({name})>"
         return (line + ("\n" + caption if caption else "")), "media"
     if mtype == 4 and extra is not None and extra["ZVCARDNAME"]:
         names = extra["ZVCARDNAME"].split("_$!<Name-Separator>!$_")
@@ -275,11 +292,11 @@ def _call_text(call, other_name: str) -> str:
 
 def create_txt_whatsapp(data, output: str, msg_db: str, contact_db: Optional[str],
                         media_domain: str, flat: bool, call_db: Optional[str] = None,
-                        media_prefix: str = "Message") -> Dict[str, int]:
+                        media_prefix: str = "Message", media_tars=None) -> Dict[str, int]:
     os.makedirs(output, exist_ok=True)
     directory = Directory(msg_db, contact_db)
     extra = _extra(msg_db)
-    ref = MediaRef(media_domain, flat, media_prefix)
+    ref = MediaRef(media_domain, flat, media_prefix, media_tars)
     stats: Dict[str, int] = {"files": 0, "written": 0}
 
     # Calls go into the chat of the other party (or of the group), like WhatsApp does.

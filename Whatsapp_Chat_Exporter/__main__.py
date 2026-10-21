@@ -152,6 +152,11 @@ def setup_argument_parser() -> ArgumentParser:
              "(default: Message; old iOS 7 WhatsApp: Library)"
     )
     output_group.add_argument(
+        "--backup-media-tars", dest="backup_media_tars", nargs="+", default=None,
+        help="Revocación fork: WhatsApp iCloud backup tar files (Media.tar, Media_1.tar...); "
+             "attachments are written as <tar>:<member> instead of an iPhone backup path"
+    )
+    output_group.add_argument(
         "--backup-flat", dest="backup_flat", default=False, action='store_true',
         help="Revocación fork: the iPhone backup is flat (iOS <= 9, Manifest.mbdb): write <sha1> instead of xx/<sha1>"
     )
@@ -667,7 +672,7 @@ def create_output_files(args, data: ChatCollection) -> None:
             contact_db = args.wa if args.wa else "ContactsV2.sqlite"
             revocacion.create_txt_whatsapp(
                 data, args.text_format, msg_db, contact_db, domain, args.backup_flat,
-                args.call_db_ios, args.backup_media_prefix)
+                args.call_db_ios, args.backup_media_prefix, args.backup_media_tars)
         else:
             android_handler.create_txt(data, args.text_format)
 

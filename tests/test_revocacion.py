@@ -31,3 +31,17 @@ def test_media_ref_ios7_flat_backup():
     path = "/Media/40732073334@s.whatsapp.net/3/6/36e4d5c237cad4b0eb0b4203b5b2495b.jpg"
     sha = hashlib.sha1(("AppDomain-net.whatsapp.WhatsApp-Library" + path).encode()).hexdigest()
     assert ref(path) == sha
+
+
+def test_media_ref_icloud_tar(tmp_path):
+    import io
+    import tarfile
+    tar_path = tmp_path / "Media.tar"
+    with tarfile.open(tar_path, "w") as tar:
+        data = b"x"
+        info = tarfile.TarInfo("/Media/34616014470@s.whatsapp.net/4/2/a.aac")
+        info.size = len(data)
+        tar.addfile(info, io.BytesIO(data))
+    ref = MediaRef(None, flat=False, tars=[str(tar_path)])
+    assert ref("Media/34616014470@s.whatsapp.net/4/2/a.aac") == "Media.tar:/Media/34616014470@s.whatsapp.net/4/2/a.aac"
+    assert ref("Media/x/y.jpg") == "sin fichero en la copia: Media/x/y.jpg"
