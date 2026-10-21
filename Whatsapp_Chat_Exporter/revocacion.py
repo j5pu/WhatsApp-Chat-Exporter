@@ -353,6 +353,10 @@ def create_txt_whatsapp(data, output: str, msg_db: str, contact_db: Optional[str
             entries.append((call["ts"], f"[{stamp(call['ts'])}] {sender}: {_call_text(call, other)}"))
             stats["call"] = stats.get("call", 0) + 1
         entries.sort(key=lambda e: e[0])  # stable: messages keep their database order
+        if not entries:
+            # Chat with only system notices that are not written: no empty file.
+            stats["chat-without-lines"] = stats.get("chat-without-lines", 0) + 1
+            continue
         with open(os.path.join(output, f"{stem}.txt"), "x", encoding="utf8") as f:
             f.write("".join(line + "\n" for _, line in entries))
         stats["files"] += 1
