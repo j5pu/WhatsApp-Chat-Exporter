@@ -135,6 +135,26 @@ def setup_argument_parser() -> ArgumentParser:
         "--no-reply", dest="no_reply_ios", default=False, action='store_true',
         help="Do not process replies (iOS only) (default: handle replies)"
     )
+    # Revocación fork
+    output_group.add_argument(
+        "--whatsapp-format", dest="whatsapp_format", default=False, action='store_true',
+        help="Revocación fork (iOS, with --txt): '[dd/mm/yyyy, hh:mm:ss] Sender: text', 'Me', "
+             "'Name [+phone].txt', LID senders resolved, attachments as <attached: path-in-backup (name)>"
+    )
+    output_group.add_argument(
+        "--backup-media-domain", dest="backup_media_domain", default=None,
+        help="Revocación fork: iPhone backup domain of the attachments (default: "
+             "AppDomainGroup-group.net.whatsapp.WhatsApp.shared, or ...WhatsAppSMB.shared with --business)"
+    )
+    output_group.add_argument(
+        "--backup-media-prefix", dest="backup_media_prefix", default="Message",
+        help="Revocación fork: folder of ZMEDIALOCALPATH inside the backup domain "
+             "(default: Message; old iOS 7 WhatsApp: Library)"
+    )
+    output_group.add_argument(
+        "--backup-flat", dest="backup_flat", default=False, action='store_true',
+        help="Revocación fork: the iPhone backup is flat (iOS <= 9, Manifest.mbdb): write <sha1> instead of xx/<sha1>"
+    )
 
     # JSON formatting options
     json_group = parser.add_argument_group('JSON Options')
@@ -326,6 +346,8 @@ def validate_args(parser: ArgumentParser, args) -> None:
             "You must specify both --source-dir and --target-dir for incremental merge.")
     if args.android and args.business:
         parser.error("WhatsApp Business is only available on iOS for now.")
+    if args.whatsapp_format and (not args.ios or not args.text_format):
+        parser.error("--whatsapp-format (Revocación fork) requires -i and --txt.")
     if "??" not in args.headline:
         parser.error("--headline must contain '??' for replacement.")
 
@@ -635,7 +657,19 @@ def create_output_files(args, data: ChatCollection) -> None:
     # Create text files if requested
     if args.text_format:
         logging.info(f"Writing text file...")
-        android_handler.create_txt(data, args.text_format)
+        if args.whatsapp_format:
+            # Revocación fork
+            from Whatsapp_Chat_Exporter import revocacion
+            domain = args.backup_media_domain or (
+                "AppDomainGroup-group.net.whatsapp.WhatsAppSMB.shared" if args.business
+                else "AppDomainGroup-group.net.whatsapp.WhatsApp.shared")
+            msg_db = args.db if args.db else args.identifiers.MESSAGE
+            contact_db = args.wa if args.wa else "ContactsV2.sqlite"
+            revocacion.create_txt_whatsapp(
+                data, args.text_format, msg_db, contact_db, domain, args.backup_flat,
+                args.call_db_ios, args.backup_media_prefix)
+        else:
+            android_handler.create_txt(data, args.text_format)
 
     # Create JSON files if requested
     if args.json and not args.import_json:

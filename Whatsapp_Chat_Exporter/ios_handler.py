@@ -15,9 +15,27 @@ from Whatsapp_Chat_Exporter.utility import bytes_to_readable, convert_time_unit,
 
 
 
+def _has_table(db, table):
+    """Revocación fork: old (iOS 7) WhatsApp databases lack some tables/columns."""
+    return db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is not None
+
+
+def _col(db, tables, column):
+    """Revocación fork: the column, unqualified as upstream writes it, if any of the
+    joined tables has it; otherwise NULL with the same name (old iOS 7 databases)."""
+    for table in ([tables] if isinstance(tables, str) else tables):
+        if column in {row[1] for row in db.execute(f"PRAGMA table_info({table})")}:
+            return column
+    return f"NULL AS {column}"
+
+
 def contacts(db, data):
     """Process WhatsApp contacts with status information."""
     c = db.cursor()
+    if not _has_table(db, "ZWAADDRESSBOOKCONTACT"):
+        # Revocación fork: iOS 7 Contacts.sqlite has another schema (ZWACONTACT/ZWAPHONE)
+        logging.info("Contact database without ZWAADDRESSBOOKCONTACT (old WhatsApp): statuses skipped")
+        return
     c.execute("""SELECT count() FROM ZWAADDRESSBOOKCONTACT WHERE ZABOUTTEXT IS NOT NULL""")
     total_row_number = c.fetchone()[0]
     logging.info(f"Pre-processing contacts...({total_row_number})", extra={"clear": True})
@@ -73,17 +91,25 @@ def messages(db, data, media_folder, timezone_offset, filter_date, filter_chat, 
         filter_chat[1], False, ["ZWACHATSESSION.ZCONTACTJID", "ZMEMBERJID"], "ZGROUPINFO", "ios")
     date_filter = f'AND ZMESSAGEDATE {filter_date}' if filter_date is not None else ''
 
+    # Revocación fork: iOS 7 databases have no ZWAPROFILEPUSHNAME, ZMETADATA or ZSENTDATE
+    has_push = _has_table(db, "ZWAPROFILEPUSHNAME")
+    push_name = "ZWAPROFILEPUSHNAME.ZPUSHNAME" if has_push else "NULL AS ZPUSHNAME"
+    push_join = ("LEFT JOIN ZWAPROFILEPUSHNAME ON ZWACHATSESSION.ZCONTACTJID = ZWAPROFILEPUSHNAME.ZJID"
+                 if has_push else "")
+    joined = ["ZWAMESSAGE", "ZWAGROUPMEMBER", "ZWAMEDIAITEM", "ZWACHATSESSION"]
+    metadata_col = _col(db, joined, "ZMETADATA")
+    sent_col = _col(db, joined, "ZSENTDATE")
+
     # Process contacts first
     contact_query = f"""
         SELECT count() 
         FROM (SELECT DISTINCT ZCONTACTJID,
             ZPARTNERNAME,
-            ZWAPROFILEPUSHNAME.ZPUSHNAME
+            {push_name}
         FROM ZWACHATSESSION
             INNER JOIN ZWAMESSAGE
                 ON ZWAMESSAGE.ZCHATSESSION = ZWACHATSESSION.Z_PK
-            LEFT JOIN ZWAPROFILEPUSHNAME
-                ON ZWACHATSESSION.ZCONTACTJID = ZWAPROFILEPUSHNAME.ZJID
+            {push_join}
             LEFT JOIN ZWAGROUPMEMBER
                     ON ZWAMESSAGE.ZGROUPMEMBER = ZWAGROUPMEMBER.Z_PK
         WHERE 1=1
@@ -98,12 +124,11 @@ def messages(db, data, media_folder, timezone_offset, filter_date, filter_chat, 
     contacts_query = f"""
         SELECT DISTINCT ZCONTACTJID,
             ZPARTNERNAME,
-            ZWAPROFILEPUSHNAME.ZPUSHNAME
+            {push_name}
         FROM ZWACHATSESSION
             INNER JOIN ZWAMESSAGE
                 ON ZWAMESSAGE.ZCHATSESSION = ZWACHATSESSION.Z_PK
-            LEFT JOIN ZWAPROFILEPUSHNAME
-                ON ZWACHATSESSION.ZCONTACTJID = ZWAPROFILEPUSHNAME.ZJID
+            {push_join}
             LEFT JOIN ZWAGROUPMEMBER
                     ON ZWAMESSAGE.ZGROUPMEMBER = ZWAGROUPMEMBER.Z_PK
         WHERE 1=1
@@ -159,10 +184,10 @@ def messages(db, data, media_folder, timezone_offset, filter_date, filter_chat, 
             ZTEXT,
             ZMESSAGETYPE,
             ZWAGROUPMEMBER.ZMEMBERJID,
-            ZMETADATA,
+            {metadata_col},
             ZSTANZAID,
             ZGROUPINFO,
-            ZSENTDATE
+            {sent_col}
         FROM ZWAMESSAGE
             LEFT JOIN ZWAGROUPMEMBER
                 ON ZWAMESSAGE.ZGROUPMEMBER = ZWAGROUPMEMBER.Z_PK
@@ -348,7 +373,7 @@ def media(db, data, media_folder, filter_date, filter_chat, filter_empty, separa
             ZMEDIALOCALPATH,
             ZMEDIAURL,
             ZVCARDSTRING,
-            ZMEDIAKEY,
+            {_col(db, ["ZWAMEDIAITEM", "ZWAMESSAGE", "ZWACHATSESSION", "ZWAGROUPMEMBER"], "ZMEDIAKEY")},
             ZTITLE
         FROM ZWAMEDIAITEM
             INNER JOIN ZWAMESSAGE
@@ -429,6 +454,10 @@ def process_media_item(content, data, media_folder, mime, separate_media, fix_do
 def vcard(db, data, media_folder, filter_date, filter_chat, filter_empty):
     """Process vCard contacts from WhatsApp messages."""
     c = db.cursor()
+    if not _has_table(db, "ZWAVCARDMENTION"):
+        # Revocación fork: old WhatsApp databases (iOS 7) have no ZWAVCARDMENTION
+        logging.info("No ZWAVCARDMENTION table (old WhatsApp): vCards skipped")
+        return
 
     # Build filter conditions
     chat_filter_include = get_chat_condition(

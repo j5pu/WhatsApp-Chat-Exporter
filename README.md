@@ -1,4 +1,59 @@
 # Whatsapp-Chat-Exporter
+
+> **Fork «Revocación» (j5pu/WhatsApp-Chat-Exporter, rama `revocacion`)**
+>
+> Parte de la versión oficial `0.13.1` de [KnugiHK/WhatsApp-Chat-Exporter](https://github.com/KnugiHK/WhatsApp-Chat-Exporter) y añade solo lo necesario para extraer conversaciones de copias de seguridad de iPhone como prueba documental. **Si no se usa `--whatsapp-format`, la salida es idéntica a la oficial.** Se ha comprobado con `diff -r` sobre el TXT del backup de 2026.
+>
+> **1. Opción `--whatsapp-format`** (iOS, junto con `--txt`). Escribe los TXT con la forma de un `_chat.txt` exportado por WhatsApp. Está en el módulo `Whatsapp_Chat_Exporter/revocacion.py`.
+>
+> - **Formato del mensaje:**
+>   - `[dd/mm/aaaa, hh:mm:ss] Remitente: texto`, en hora local con horario de verano;
+>   - las líneas de continuación van sin prefijo;
+>   - los mensajes propios aparecen como `Me`.
+>
+>   La hora toma los segundos enteros de `ZMESSAGEDATE`, sin decimales. Se cotejó con una exportación oficial de WhatsApp del mismo chat: el texto y el orden coinciden. Solo algunos mensajes enviados desde el iPhone difieren en 1 segundo, porque WhatsApp redondea a su manera.
+> - **Un fichero por chat, sin sobrescribir nunca.** La exportación oficial nombra los ficheros solo por el nombre del contacto, así que los chats con el mismo nombre se pisaban.
+>   - Personas: `Nombre [+teléfono].txt`.
+>   - Grupos: `Nombre del grupo [id@g.us].txt`.
+>   - Sin nombre: `+teléfono.txt`.
+>   - Chats guardados con identificador LID: `Nombre [+teléfono, id@lid].txt`.
+> - **Remitentes LID de los grupos:** se resuelven a su teléfono y nombre con la columna `ZLID` de ContactsV2. Si no se puede, se usa el push name (`~Nombre`) y, en último caso, el identificador `…@lid` tal cual.
+> - **Anexos:** no se copian. Se escriben como `<attached: ruta-en-el-backup (nombre original)>`.
+>   - La ruta es el SHA-1 de `<dominio>-<carpeta>/<ZMEDIALOCALPATH>`, que es como se nombran los ficheros en un backup de iPhone.
+>   - La forma es `xx/<sha1>` en backups modernos y `<sha1>` en backups planos (iOS ≤ 9).
+>   - Si la base no guarda ruta, se escribe `<attached: sin ruta en la base>`.
+> - **Otros contenidos:**
+>   - contactos compartidos: `<contacto compartido: …>`;
+>   - ubicaciones: `<ubicación: lat, lon>`;
+>   - mensajes borrados, con la misma frase que WhatsApp: `This message was deleted.` / `You deleted this message.`.
+> - **Citas:** cada respuesta lleva debajo `Responde a: [fecha] Remitente` o `Responde a un mensaje que no está en la copia`.
+> - **Llamadas:** las de `CallHistory` (con sus participantes) se escriben dentro del chat de la otra persona o del grupo, con la misma frase que la exportación oficial. Los mensajes de registro de llamada (tipo 59) que coinciden con una llamada no se repiten.
+> - **Mensajes sin texto de tipos que la herramienta no interpreta:** `<mensaje de WhatsApp de tipo N sin texto>`.
+> - **Avisos de sistema sin texto (tipo 6):** no se escriben. Su número aparece en el recuento del registro.
+> - **Recuento:** el registro muestra el recuento de lo escrito, por clase. Cuadra con la base: mensajes − avisos omitidos − registros de llamada cubiertos + llamadas.
+>
+> **2. Bases antiguas de WhatsApp (iOS 7).** Ahora se leen: si no existen `ZWAPROFILEPUSHNAME`, `ZMETADATA`, `ZSENTDATE`, `ZMEDIAKEY`, `ZWAVCARDMENTION` o `ZWAADDRESSBOOKCONTACT`, se usa `NULL` o se omite ese paso, en lugar de fallar. Además, los nombres se leen del `Contacts.sqlite` antiguo (`ZWAPHONE` y `ZWACONTACT`).
+>
+> **3. Opciones para la ruta del anexo:**
+> - `--backup-media-domain`: por defecto `AppDomainGroup-group.net.whatsapp.WhatsApp.shared`, o `…WhatsAppSMB.shared` con `--business`;
+> - `--backup-media-prefix`: `Message` por defecto, o `Library` para iOS 7;
+> - `--backup-flat`.
+>
+> **4. Pruebas:** `tests/test_revocacion.py`. Pasan las 81 pruebas, con el binario `wtsexporter` en el `PATH`.
+>
+> Uso en el proyecto, siempre sobre copias verificadas de las bases y nunca sobre los originales:
+>
+> ```sh
+> # Backup moderno (2026)
+> wtsexporter -i -d <ChatStorage> -w <ContactsV2> --call-db <CallHistory> -m <carpeta-vacia> \
+>   -o <out>/html --txt <out>/txt --no-html --whatsapp-format
+> # Backup de iOS 7 (2014)
+> wtsexporter -i -d <ChatStorage> -w <Contacts.sqlite> -m <carpeta-vacia> -o <out>/html --txt <out>/txt \
+>   --no-html --whatsapp-format --backup-media-domain AppDomain-net.whatsapp.WhatsApp \
+>   --backup-media-prefix Library --backup-flat
+> ```
+>
+> Licencia: MIT, la misma que el proyecto original.
 [![Latest in PyPI](https://img.shields.io/pypi/v/whatsapp-chat-exporter?label=Latest%20in%20PyPI)](https://pypi.org/project/whatsapp-chat-exporter/)
 [![License MIT](https://img.shields.io/pypi/l/whatsapp-chat-exporter?color=427B93)](https://github.com/KnugiHK/WhatsApp-Chat-Exporter/blob/main/LICENSE)
 [![Python](https://img.shields.io/pypi/pyversions/Whatsapp-Chat-Exporter)](https://pypi.org/project/Whatsapp-Chat-Exporter/)
