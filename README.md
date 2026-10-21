@@ -29,7 +29,7 @@
 > - **Citas:** cada respuesta lleva debajo `Responde a: [fecha] Remitente` o `Responde a un mensaje que no está en la copia`.
 > - **Llamadas:** las de `CallHistory` (con sus participantes) se escriben dentro del chat de la otra persona o del grupo, con la misma frase que la exportación oficial. Los mensajes de registro de llamada (tipo 59) que coinciden con una llamada no se repiten.
 > - **Mensajes sin texto de tipos que la herramienta no interpreta:** `<mensaje de WhatsApp de tipo N sin texto>`.
-> - **Avisos de sistema sin texto (tipo 6):** no se escriben. Su número aparece en el recuento del registro.
+> - **Avisos de sistema sin texto (tipos 6 y 10):** no se escriben, porque la base no guarda su texto (por ejemplo, el aviso de cifrado de extremo a extremo). Lo decidió José el 21-oct-2026. El registro los cuenta por clase y, los de tipo 10, por subtipo (`ZGROUPEVENTTYPE`), para poder localizarlos en la base.
 > - **Recuento:** el registro muestra el recuento de lo escrito, por clase. Cuadra con la base: mensajes − avisos omitidos − registros de llamada cubiertos + llamadas.
 >
 > **2. Bases antiguas de WhatsApp (iOS 7).** Ahora se leen: si no existen `ZWAPROFILEPUSHNAME`, `ZMETADATA`, `ZSENTDATE`, `ZMEDIAKEY`, `ZWAVCARDMENTION` o `ZWAADDRESSBOOKCONTACT`, se usa `NULL` o se omite ese paso, en lugar de fallar. Además, los nombres se leen del `Contacts.sqlite` antiguo (`ZWAPHONE` y `ZWACONTACT`).

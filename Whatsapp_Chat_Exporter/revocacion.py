@@ -174,9 +174,11 @@ def _extra(msg_db: str) -> Dict[int, sqlite3.Row]:
     con = _ro(msg_db)
     mcols = _columns(con, "ZWAMEDIAITEM")
     vcard = "mi.ZVCARDNAME" if "ZVCARDNAME" in mcols else "NULL"
+    event = "m.ZGROUPEVENTTYPE" if "ZGROUPEVENTTYPE" in _columns(con, "ZWAMESSAGE") else "NULL"
     rows = con.execute(f"""
         SELECT m.Z_PK, m.ZMESSAGETYPE, gm.ZMEMBERJID, mi.ZMEDIALOCALPATH, mi.ZTITLE,
-               mi.ZLATITUDE, mi.ZLONGITUDE, {vcard} AS ZVCARDNAME, mi.Z_PK AS MEDIA_PK
+               mi.ZLATITUDE, mi.ZLONGITUDE, {vcard} AS ZVCARDNAME, mi.Z_PK AS MEDIA_PK,
+               {event} AS ZGROUPEVENTTYPE
         FROM ZWAMESSAGE m
             LEFT JOIN ZWAGROUPMEMBER gm ON m.ZGROUPMEMBER = gm.Z_PK
             LEFT JOIN ZWAMEDIAITEM mi ON mi.ZMESSAGE = m.Z_PK
@@ -208,6 +210,12 @@ def _body(message, extra: Optional[sqlite3.Row], ref: MediaRef) -> Tuple[Optiona
     if data is None:
         if mtype == 6:
             return None, "system-skipped"
+        if mtype == 10:
+            # System notice (encryption notice, security code change...) whose text is
+            # not stored in the database: not written (decision of José, 21-oct-2026).
+            # Counted per subtype (ZGROUPEVENTTYPE) so it can be traced in the database.
+            sub = extra["ZGROUPEVENTTYPE"] if extra is not None else None
+            return None, f"system10-skipped-sub{sub}"
         return f"<mensaje de WhatsApp de tipo {mtype} sin texto>", "empty"
     text = str(data).replace("<br>", "\n")
     if caption:
